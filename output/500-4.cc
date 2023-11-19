@@ -2,6 +2,7 @@
 #include <cmath>
 #include <string.h>
 
+
 int INE5412_FS::search_free_block(){
 	for(int i=0; i < disk->size(); i++){
 		if(!bit_map[i]) return i;
@@ -12,7 +13,9 @@ int INE5412_FS::search_free_block(){
 
 int INE5412_FS::inode_read_block( int index, union fs_block *block, class fs_inode *inode){
 		
-		// Direto
+		if(index >= POINTERS_PER_INODE+POINTERS_PER_BLOCK) return 0;
+
+		// Direto.
 		if(index < POINTERS_PER_INODE){
 			if(inode->direct[index]){
 				disk->read(inode->direct[index], block->data);
@@ -21,7 +24,7 @@ int INE5412_FS::inode_read_block( int index, union fs_block *block, class fs_ino
 			
 
 		}
-		// Indireto
+		// Indireto.
 		else{
 			union fs_block block1;
 			if(inode->indirect){
@@ -33,10 +36,10 @@ int INE5412_FS::inode_read_block( int index, union fs_block *block, class fs_ino
 				
 			} else 
 				return 0;
-
 		}
 
 		return 1;
+
 }
 
 int INE5412_FS::inode_write_block( int index, union fs_block *block, class fs_inode *inode){
@@ -47,7 +50,9 @@ int INE5412_FS::inode_write_block( int index, union fs_block *block, class fs_in
 		if(index < POINTERS_PER_INODE){
 			if(inode->direct[index]){
 				disk->write(inode->direct[index], block->data);
-			} else {
+			} 
+			
+			else {
 				inode->direct[index] = search_free_block();
 				if(inode->direct[index]){
 					bit_map[inode->direct[index]] = 1;
@@ -60,25 +65,35 @@ int INE5412_FS::inode_write_block( int index, union fs_block *block, class fs_in
 		}
 		// Indireto
 		else{
-			cout << "entao tão" << endl;
 			union fs_block block1;
 			if(inode->indirect){
 				disk->read(inode->indirect, block1.data);
-			} else {
+			} 
+			else 
+			{
 				inode->indirect = search_free_block();
-				if(inode->indirect){
-					disk->read(inode->indirect, block1.data);
-				}else 
+				if(inode->indirect) {
+					bit_map[inode->indirect] = 1;
+					for (int i = 0; i < POINTERS_PER_BLOCK; i++) {
+						block1.pointers[i] = 0;
+					}
+				} 
+				else	
 					return 0;
-
 			}
 
 			if(block1.pointers[index-POINTERS_PER_INODE]){
 				disk->write(block1.pointers[index-POINTERS_PER_INODE], block->data);
-			} else {
+				disk->write(inode->indirect, block1.data);
+				
+
+			} 
+			else {
 				block1.pointers[index-POINTERS_PER_INODE] = search_free_block();
 				if(block1.pointers[index-POINTERS_PER_INODE]){
+					bit_map[block1.pointers[index-POINTERS_PER_INODE]] = 1;
 					disk->write(block1.pointers[index-POINTERS_PER_INODE], block->data);
+					disk->write(inode->indirect, block1.data);
 				}
 				else 
 					return 0;
@@ -131,7 +146,7 @@ int INE5412_FS::fs_format()
 	// Se não estiver montado
 	if(!it_is_mounted){
 		int disk_size = disk->size();
-		int ninodeblocks = ceil(disk_size*0.1);
+		int ninodeblocks = ceil(disk_size*0.1); // 10% do tamanho do disco arredondado para cima. 
 
 		// Cria superblock
 		union fs_block block;
@@ -208,11 +223,6 @@ void INE5412_FS::fs_debug()
 			}
 		}
 	}
-
-
-	//for(int i = 0; i < super.nblocks; i++){
-	//	cout << i << ":" << bit_map[i] << endl;
-	//}
 }
 
 int INE5412_FS::fs_mount()
@@ -238,6 +248,7 @@ int INE5412_FS::fs_mount()
 				for (int j = 0; j < INODES_PER_BLOCK; j++){
 					fs_inode inode = block.inode[j];
 					if(inode.isvalid){
+						// Percorrer todos os blocos do inode;
 						for (int b : inode.direct) 
 							if(b) bit_map[b] = 1;
 						
@@ -266,7 +277,7 @@ int INE5412_FS::fs_create()
 		// Percorre pelos blocos de inodes.
 		for (int i = 1; i <= super.ninodeblocks; i++){
 			disk->read(i, block.data);
-			// Percorre pelos inodes do bloco.
+			// Percorre pelos inodes do bloco até encontrar um inode livre ou percorrer todos os inodes.
 			for (int j = 0; j < INODES_PER_BLOCK; j++){
 				int inode = j + (i-1)*INODES_PER_BLOCK;
 				if( inode != 0 && !block.inode[j].isvalid){
@@ -289,7 +300,7 @@ int INE5412_FS::fs_create()
 
 int INE5412_FS::fs_delete(int inumber)
 {
-	if(it_is_mounted  && inumber > 0 && inumber <= super.ninodes){
+	if(it_is_mounted  && inumber > 0 && inumber < super.ninodes){
 		fs_inode inode;
 		inode_load(inumber, &inode);
 
@@ -318,7 +329,7 @@ int INE5412_FS::fs_delete(int inumber)
 int INE5412_FS::fs_getsize(int inumber)
 {
 
-	if(it_is_mounted  && inumber > 0 && inumber <= super.ninodes){
+	if(it_is_mounted  && inumber > 0 && inumber < super.ninodes){
 		class fs_inode inode;
 		inode_load(inumber, &inode);
 
@@ -331,7 +342,7 @@ int INE5412_FS::fs_getsize(int inumber)
 
 int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 {
-	if(it_is_mounted  && inumber > 0 && inumber <= super.ninodes){
+	if(it_is_mounted  && inumber > 0 && inumber < super.ninodes){
 		class fs_inode inode;
 		inode_load(inumber, &inode);
 
@@ -348,9 +359,11 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 			while(index_block < read_blocks && current_length < length)
 			{
 				if(inode_read_block(index_block, &block, &inode)){
-					int read_size = (index_block != read_blocks-1 ? Disk::DISK_BLOCK_SIZE : inode.size - (read_blocks-1)*Disk::DISK_BLOCK_SIZE);
+					// Tamanho do dado a ser lido.
+					int read_size = (index_block != read_blocks-1 ? Disk::DISK_BLOCK_SIZE : inode.size - (read_blocks-1)*Disk::DISK_BLOCK_SIZE); 
 					read_size = (read_size <= length-current_length ? read_size : length-current_length);
 
+					// Adiciona no final de data o dado o dado lido;
 					memcpy(data + current_length, block.data, read_size);
 
 					current_length += read_size;
@@ -372,7 +385,7 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 
 int INE5412_FS::fs_write(int inumber, const char *data, int length, int offset)
 {	
-	if(it_is_mounted  && inumber > 0 && inumber <= super.ninodes){
+	if(it_is_mounted  && inumber > 0 && inumber < super.ninodes){
 		class fs_inode inode;
 		inode_load(inumber, &inode);
 
@@ -383,27 +396,31 @@ int INE5412_FS::fs_write(int inumber, const char *data, int length, int offset)
 		int current_length = 0;
 
 		union fs_block block;
-		while(current_length < length){
-			int write_size = (Disk::DISK_BLOCK_SIZE < length-current_length ? Disk::DISK_BLOCK_SIZE : length-current_length);
 
+		while(current_length < length){
+			int write_size = (Disk::DISK_BLOCK_SIZE < length-current_length ? Disk::DISK_BLOCK_SIZE : length-current_length); // Tamanho do dado a ser escrito.
+
+			// Se for o primeiro o bloco a ser escrito.
 			if(index_block == offset/Disk::DISK_BLOCK_SIZE){
-				inode_read_block(index_block, &block, &inode);
+				inode_read_block(index_block, &block, &inode); // Se bloco(index_block) não existir não faz nada.
+				// Adiciona no final do bloco o dado a partir de current_length ate write_size ou final do bloco;
 				memcpy(block.data+inode.size%Disk::DISK_BLOCK_SIZE, data+current_length, write_size - inode.size%Disk::DISK_BLOCK_SIZE);
 				if(!inode_write_block(index_block, &block, &inode)) break;
-				
 				current_length += write_size - inode.size%Disk::DISK_BLOCK_SIZE;
 
+			// Se não.
 			}else{
-
-				memcpy(block.data, data+current_length, write_size);
+				// Adiciona no bloco o dado a partir de current_length ate write_size;
+				cout << index_block << endl;
+				memcpy(block.data, data+current_length, write_size); 
 				if(!inode_write_block(index_block, &block, &inode)) break;
 				current_length += write_size;
 			}
 
 			index_block += 1;
 		}
-
-		inode.size += current_length;
+		
+		inode.size = offset + current_length;
 		inode_save(inumber, &inode);
 		return current_length;
 	}

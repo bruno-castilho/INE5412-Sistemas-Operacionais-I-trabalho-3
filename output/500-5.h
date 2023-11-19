@@ -61,14 +61,14 @@ public:
 private:
     Disk *disk;
     fs_superblock super;
-    int it_is_mounted;
+    int it_is_mounted; 
     int* bit_map;
 
-    void inode_load( int inumber, class fs_inode *inode );
-    void inode_save( int inumber, class fs_inode *inode );
-    int inode_read_block( int index, union fs_block *block, class fs_inode *inode);
-    int inode_write_block( int index, union fs_block *block, class fs_inode *inode);
-    int search_free_block();
+    void inode_load( int inumber, class fs_inode *inode ); // Lê um inode do disco
+    void inode_save( int inumber, class fs_inode *inode ); // Ecreve um inode no disco
+    int inode_read_block( int index, union fs_block *block, class fs_inode *inode); // Lê um bloco de dados de um inode, conforme a posição(index)
+    int inode_write_block( int index, union fs_block *block, class fs_inode *inode); // Escreve um bloco de dados em um inode, conforme a posição(index)
+    int search_free_block(); // Busca um bloco livre 
     
 };
 
